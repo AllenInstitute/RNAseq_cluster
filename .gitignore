@@ -1,0 +1,10 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Data files (http://celltypes.brain-map.org/api/v2/well_known_file_download/502999251)
+columns-cells.csv
+fpkm_table.csv
+README.txt
+rows-genes.csv
