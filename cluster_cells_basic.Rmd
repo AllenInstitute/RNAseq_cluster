@@ -1,0 +1,83 @@
+---
+title: "Single cell RNA-seq clustering - Basic"
+output: html_notebook
+---
+
+
+```{r init-workspace, message=FALSE, warning=FALSE, include=FALSE}
+if (! require(devtools)) {
+  install.packages("devtools")
+  require(devtools)
+}
+
+LoadPackages <- function(pkg.name, pkg.install, repo = "CRAN") {
+  if (! require(pkg.name, character.only = TRUE)) {
+    if (repo == "CRAN") {
+    install.packages(pkg.install, dependencies = TRUE)
+    } else if (repo == "github") {
+      devtools::install_github(pkg.install)
+    }
+  }
+  require(pkg.name, character.only = TRUE)
+}
+
+req.packages <- rbind(c("igraph", "igraph", "CRAN"),
+                      c("Rphenograph", "Rphenograph", "github"))
+apply(req.packages, 1, function(x) LoadPackages(pkg.name = x[1], 
+                                                pkg.install = x[2], 
+                                                repo = x[3]))
+
+```
+
+
+```{r load data, echo = FALSE}
+lgd.fpkm <- read.csv(file = "data/fpkm_table.csv", 
+                    row.names = 1)
+lgd.genes <- read.csv(file = "data/rows-genes.csv", 
+                     row.names = 1)
+keep.genes <- which(! duplicated(lgd.genes$gene_symbol) & 
+                      ! grepl("^Gm", lgd.genes$gene_symbol) &
+                      ! grepl("^LOC", lgd.genes$gene_symbol))
+lgd.genes <- lgd.genes[keep.genes, ]
+lgd.data <- lgd.fpkm[keep.genes, ]
+rownames(lgd.data) <- lgd.genes$gene_symbol
+lgd.meta <- read.csv(file = "data/columns-cells.csv")
+rownames(lgd.meta) <- colnames(lgd.fpkm)
+
+```
+
+
+```{r preprocess-data}
+
+```
+
+
+```{r select-variable-genes}
+
+```
+
+
+```{r reduce-dimensionality}
+
+```
+
+
+```{r find-clusters}
+
+```
+
+
+```{r build-cluster-tree}
+
+```
+
+
+```{r plot-cluster-labels}
+
+```
+
+
+```{r find-cluster-markers}
+
+```
+
