@@ -51,23 +51,25 @@ CountMarkerGenes <- function(expr.dat, clusters,
         dex.cnt2 <- sum(cl.props[, j] > cl1.prop & cl.props[, i] < cl2.prop)
         min.dex.cnt <- min(dex.cnt1, dex.cnt2)
         min.size <- min(cl.sizes[i], cl.sizes[j])
-        cl1 <- as.numeric(colnames(cl.props)[i])
-        cl2 <- as.numeric(colnames(cl.props)[j])
+        cl1 <- colnames(cl.props)[i]
+        cl2 <- colnames(cl.props)[j]
         min.dex1 <- data.frame(cl1, cl2, min.size, min.dex.cnt)
         min.dex.df <- rbind(min.dex.df, min.dex1)
                             
       }
     }
+    min.dex.df <- min.dex.df[order(min.dex.df$min.dex.cnt), ]
   }
 
-  min.dex.df <- min.dex.df[order(min.dex.df$min.dex.cnt), ]
   return(min.dex.df)
 }
 
 ```
 
 ## Load data
-#### Data downloaded from 
+300 cells from mouse dorsal lateral geniculate nucleus of the thalamus. 
+Data downloaded from the Allen Institute Cell Types Database 
+http://celltypes.brain-map.org/download.
 ```{r load-data, echo = FALSE}
 expr <- read.csv(file = "data/fpkm_table.csv", row.names = 1)
 genes <- read.csv(file = "data/rows-genes.csv", row.names = 1)
@@ -80,6 +82,9 @@ meta <- read.csv(file = "data/columns-cells.csv")
 # Keep cells with at least N genes detected
 min.genes <- 1000
 keep.cells <- which(apply(expr, 2, function(x) sum(x > 0)) > min.genes)
+
+keep.cells <- which(meta$broad_class %in% c("Gad2_Sepp1", "Gad2_Syt4", "Olig1") |
+                      meta$subclass %in% c("Slc17a6_Calb2"))
 
 # Select random subset of cells to speed computation
 set.seed(123)
@@ -157,14 +162,20 @@ for (i in 1:10) {
 plot(1:10, within.ss, type="b",
      xlab="Number of Clusters", ylab="Within groups sum of squares")
 
-for (i in 2:10) {
+tsne1 <- Rtsne(expr.pcs, perplexity = 30)$Y
+
+par(mfrow = c(2, 4))
+for (i in 2:9) {
   cl.lab <- km.list[[i]]$cluster
-  pcs.toplot <- 1:min(4, ncol(expr.pcs))
-  pairs(expr.pcs[, pcs.toplot], col = cl.lab, main = paste(i, "clusters"))
+  plot(tsne1, col = cl.lab, main = paste(i, "clusters"))
+  # PCA plots
+  # pcs.toplot <- 1:min(4, ncol(expr.pcs))
+  # pairs(expr.pcs[, pcs.toplot], col = cl.lab, main = paste(i, "clusters"))
 }
 
-n.clus <- 10
-meta.subset$cluster <- km.list[[n.clus]]$cluster
+n.clus <- 5
+# meta.subset$cluster <- km.list[[n.clus]]$cluster
+meta.subset$cluster <- meta.subset$subclass
 meta.subset$cluster_curated <- meta.subset$cluster
 
 ```
@@ -172,11 +183,11 @@ meta.subset$cluster_curated <- meta.subset$cluster
 ## Curate clusters
 ```{r curate-clusters}
 # Cell type criteria
-p.expr.thresh <- 1  # Expression noise floor
-target.prop <- 0.5  # Define marker gene - minimum detection in target cluster
-other.prop <- 0.1  # Define marker gene - maximum detection in other clusters
-min.markers <- 3  # Minimum number of marker genes to identify distinct cell type
-min.cl.size <- 3  # Minimum number of cells in a cluster
+p.expr.thresh <- 1  # Marker gene: Min expression for detection above noise
+target.prop <- 0.5  # Marker gene: Min detection (proportion of cells) in target cluster
+other.prop <- 0.1  # Marker gene: Max detection in other clusters
+min.markers <- 3  # Min number of marker genes
+min.cl.size <- 3  # Min number of cells
 
 cl.marker.cnt <- CountMarkerGenes(expr.subset, meta.subset$cluster_curated,
                                   expr.thresh = p.expr.thresh,
@@ -195,28 +206,61 @@ for (idx1 in cl.tomerge) {
 ```
 
 
-## Visualize clustering
+## Visualize clusters
 ```{r viz-clusters}
-par(mfcol = c(2, 3))
-plot(expr.pcs[, 1:2], col = meta.subset$cluster,
-      main = paste("PCA -", length(unique(meta.subset$cluster)), "original clusters"))
-plot(expr.pcs[, 1:2], col = meta.subset$cluster_curated,
-      main = paste("PCA -", length(unique(meta.subset$cluster_curated)), "curated clusters"))
-
-plot(tsne1, col = meta.subset$cluster, 
-      main = paste("tSNE -", length(unique(meta.subset$cluster)), "original clusters"))
-plot(tsne1, col = meta.subset$cluster_curated, 
-      main = paste("tSNE -", length(unique(meta.subset$cluster_curated)), "curated clusters"))
+par(mfrow = c(2, 3))
 
 for (clus1 in c("cluster", "cluster_curated")) {
+  plot(expr.pcs[, 1:2], col = meta.subset[, clus1],
+      main = paste("PCA -", length(unique(meta.subset[, clus1])), clus1))
+  plot(tsne1, col = meta.subset[, clus1], 
+      main = paste("tSNE -", length(unique(meta.subset[, clus1])), clus1))
+
   cl.expr <- t(apply(expr.subset[top.var.genes, ], 1, 
                      function(x) tapply(x, meta.subset[, clus1], mean)))
   cl.dist <- as.dist((1 - cor(cl.expr)) / 2)
   cl.dend <- as.dendrogram(hclust(cl.dist))
+  
   # Reorder dendrogram to match cluster position along first tSNE coordinate
   cl.coord <- tapply(tsne1[, 1], meta.subset[, clus1], mean)
   cl.dend <- reorder(cl.dend, cl.coord, agglo.FUN = "mean")
-  plot(cl.dend)
+  plot(cl.dend,
+             main = paste(length(unique(meta.subset[, clus1])), clus1))
 }
 
 ```
+
+
+
+## Further analyses
+1. Try different clustering parameters
+    * Variable gene selection
+    * Number of principal components to include
+2. Split clusters further by clustering subsets of cells
+3. Plot expression of cluster markers
+4. Download and cluster complete mouse dorsal LGN data set (1,772 cells)
+    * http://celltypes.brain-map.org/api/v2/well_known_file_download/502999251
+
+
+##Resources
+1. RNA-seq data sets
+    * Allen Institute Cell Types Database http://celltypes.brain-map.org/download
+    * Single Cell Portal (Broad Institute) https://portals.broadinstitute.org/single_cell
+    * SCAP-T https://www.scap-t.org/content/data-portal
+    * NCBI GEO DataSets https://www.ncbi.nlm.nih.gov/gds
+2. Analysis tools
+    * Cell sampling http://satijalab.org/howmanycells
+    * BASiCS https://github.com/catavallejos/BASiCS
+    * RUVSeq http://bioconductor.org/packages/release/bioc/html/RUVSeq.html
+    * DESeq2 https://bioconductor.org/packages/release/bioc/html/DESeq2.html
+    * scde http://hms-dbmi.github.io/scde/
+    * WGCNA https://labs.genetics.ucla.edu/horvath/CoexpressionNetwork/Rpackages/WGCNA/
+    * tSNE https://lvdmaaten.github.io/tsne/
+    * ToppGene GO enrichment https://toppgene.cchmc.org/enrichment.jsp
+3. Clustering tools
+    * DBSCAN https://cran.r-project.org/web/packages/dbscan/
+    * Pagoda https://github.com/hms-dbmi/pagoda2
+    * Seurat http://satijalab.org/seurat/
+    * BackSpin https://github.com/linnarsson-lab/BackSPIN
+    * PhenoGraph https://www.c2b2.columbia.edu/danapeerlab/html/phenograph.html
+    * SIMLR https://github.com/BatzoglouLabSU/SIMLR
