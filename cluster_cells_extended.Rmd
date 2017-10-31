@@ -1,5 +1,5 @@
 ---
-title: "RNA-seq clustering"
+title: "Single cell RNA-seq clustering - Extended"
 output: html_notebook
 ---
 
@@ -30,24 +30,113 @@ apply(req.packages, 1, function(x) LoadPackages(pkg.name = x[1],
 ```
 
 
-```{r load-data}
-lgd.fpkm <- read.csv(file = "data/fpkm_table.csv", 
-                    row.names = 1)
-lgd.genes <- read.csv(file = "data/rows-genes.csv", 
-                     row.names = 1)
-keep.genes <- which(! duplicated(lgd.genes$gene_symbol) & 
-                      ! grepl("^Gm", lgd.genes$gene_symbol) &
-                      ! grepl("^LOC", lgd.genes$gene_symbol))
-lgd.genes <- lgd.genes[keep.genes, ]
-lgd.data <- lgd.fpkm[keep.genes, ]
-rownames(lgd.data) <- lgd.genes$gene_symbol
-lgd.meta <- read.csv(file = "data/columns-cells.csv")
-rownames(lgd.meta) <- colnames(lgd.fpkm)
+
+```{r load-data, echo = FALSE}
+expr <- read.csv(file = "data/fpkm_table.csv", row.names = 1)
+genes <- read.csv(file = "data/rows-genes.csv", row.names = 1)
+meta <- read.csv(file = "data/columns-cells.csv")
 
 ```
 
 
-```{r preprocess-data}
+```{r subset-data}
+# Keep cells with at least N genes detected
+min.genes <- 1000
+keep.cells <- which(apply(expr, 2, function(x) sum(x > 0)) > min.genes)
+
+# Select random subset of cells to speed computation
+set.seed(123)
+keep.cells <- sample(keep.cells, size = 300, replace = FALSE)
+
+# Keep annotated, variable genes
+var.genes <- apply(expr[, keep.cells], 1, sd) > 0
+keep.genes <- which(! duplicated(genes$gene_symbol) & 
+                      ! grepl("^Gm", genes$gene_symbol) &
+                      ! grepl("^LOC", genes$gene_symbol) &
+                      var.genes)
+
+# Subset data
+genes.subset <- genes[keep.genes, ]
+expr.subset <- log2(expr[keep.genes, keep.cells] + 1)
+meta.subset <- meta[keep.cells, ]
+rownames(expr.subset) <- genes.subset$gene_symbol
+rownames(meta.subset) <- colnames(expr.subset)
+
+```
+
+
+```{r select-variable-genes}
+gene.sd <- apply(expr.subset, 1, sd)
+var.thresh <- quantile(gene.sd, 0.95)
+hist(gene.sd, breaks = 20, xlab = "Expression standard deviation", 
+     main = "Variable genes")
+abline(v = var.thresh, col = "blue")
+top.var.genes <- which(gene.sd > var.thresh)
+
+```
+
+
+```{r reduce-dim}
+expr.scaled <- scale(expr.subset)
+pca1 <- prcomp(t(expr.scaled[top.var.genes, ]))
+biplot(pca1)
+
+```
+
+
+```{r select-pcs}
+CalcBrokenStick <- function(x) {
+  m <- 0
+  out <- matrix(NA, ncol = 3, nrow = length(x))
+  colnames(out) <- c("pc", "var_pct", "bstick_thresh")
+  for (i in 1:length(x)) {
+    for (k in i:length(x)) {
+      m <- m + ((1 / length(x)) * (1 / k))
+    }
+    out[i, ] <- c(i, (x[i] / sum(x)) * 100, m * 100)
+    m <- 0
+  }
+  pc.var.order <- order(out[, "var_pct"], decreasing = TRUE)
+  out <- out[pc.var.order, ]
+  out[, "bstick_thresh"] <- sort(out[, "bstick_thresh"], decreasing = TRUE)
+  return(out)
+}
+
+
+brstick1 <- CalcBrokenStick(pca1$sdev^2)
+
+p.sig.pcs <- NULL
+for (i in 1:10) {
+  var.pct <- brstick1[i, "var_pct"]
+  var.thresh <- brstick1[i, "bstick_thresh"]
+  if (var.pct > var.thresh) {
+    p.sig.pcs <- c(p.sig.pcs, brstick1[i, "pc"])
+    # Sig PCs must be sequential
+  } else {
+    break
+  }
+}
+
+```
+
+
+```{r find-clusters}
+
+
+```
+
+
+```{r build-cluster-tree}
+
+```
+
+
+```{r plot-cluster-labels}
+
+```
+
+
+```{r find-cluster-markers}
 
 ```
 
