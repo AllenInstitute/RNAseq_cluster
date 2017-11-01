@@ -5,20 +5,21 @@ output: html_notebook
 
 
 ```{r init-workspace, message=FALSE, warning=FALSE, include=FALSE}
-# Install required packages
+#### Install packages ####
 if (! require(Rtsne)) {
   install.packages("Rtsne")
   require(Rtsne)
 }
 
-if (! require(RColorBrewer)) {
-  install.packages("RColorBrewer")
-  require(RColorBrewer)
+if (! require(Rphenograph)) {
+  if (! require(devtools)) {
+    install.packages("devtools")
+  }
+  devtools::install_github("JinmiaoChenLab/Rphenograph")
 }
-palette(brewer.pal(12, "Set3"))
 
 
-# Define functions
+#### Define functions ####
 CalcBrokenStick <- function(x) {
   m <- 0
   out <- matrix(NA, ncol = 3, nrow = length(x))
@@ -54,7 +55,8 @@ CountMarkerGenes <- function(expr.dat, clusters,
         min.size <- min(cl.sizes[i], cl.sizes[j])
         cl1 <- colnames(cl.props)[i]
         cl2 <- colnames(cl.props)[j]
-        min.dex1 <- data.frame(cl1, cl2, min.size, min.dex.cnt)
+        min.dex1 <- data.frame(cl1, cl2, min.size, min.dex.cnt, 
+                               stringsAsFactors = FALSE)
         min.dex.df <- rbind(min.dex.df, min.dex1)
                             
       }
@@ -65,6 +67,13 @@ CountMarkerGenes <- function(expr.dat, clusters,
   return(min.dex.df)
 }
 
+
+#### Set color palette ####
+pal1 <- c("#d77a7f", "#8eda48", "#7340cd", "#d6c847", "#ce4cc5", "#64db8e", 
+          "#432876", "#509140", "#7171cd", "#d1863a", "#79acd9", "#d24530", 
+          "#6dc7b7", "#d23e70", "#c6d394", "#8d3870", "#827f38", "#cd90cb", 
+          "#3a4e32", "#c9c5c6", "#3e263b", "#ae8875", "#556983", "#753627")
+palette(pal1)
 ```
 
 ## Load data
@@ -102,18 +111,45 @@ rownames(meta.subset) <- colnames(expr.subset)
 
 ## Select variable genes
 ```{r select-variable-genes}
-gene.mean <- apply(expr.subset, 1, mean)
-gene.sd <- apply(expr.subset, 1, sd)
-sd.thresh <- quantile(gene.sd, 0.95)
+expr.mean <- apply(expr.subset, 1, mean)
+expr.mean.bin <- cut(expr.mean, breaks = 0:15)
+expr.sd <- apply(expr.subset, 1, sd)
+sd.thresh <- quantile(expr.sd, 0.95)
 
-plot(gene.mean, gene.sd, cex = 0.5, 
+plot(expr.mean, expr.sd, cex = 0.5, 
      xlab = "Average expression - log2(FPKM + 1)", 
      ylab = "Expression variation (sd)", 
      main = "Variable genes")
 abline(h = sd.thresh, col = "blue")
-top.var.genes <- which(gene.sd > sd.thresh)
+top.var.genes <- which(expr.sd > sd.thresh)
 
-# plot(gene.mean^2, (gene.sd / gene.mean)^2, log = "xy")
+
+
+
+# expr.sd.scaled <- unlist(tapply(expr.sd, expr.mean.bin, scale))
+# names(expr.sd.scaled) <- names(expr.mean)
+
+
+# expr.cnt <- 2^expr.subset - 1
+# expr.cnt.mean <- apply(expr.cnt, 1, mean)
+# expr.cnt.sd <- apply(expr.cnt, 1, sd)
+
+# par(mfrow = c(1, 2))
+# plot(expr.cnt.mean, expr.cnt.sd^2 / expr.cnt.mean^2, log = "xy",
+#      xlab = "Average expression - log2(FPKM + 1)", 
+#      ylab = "Expression disperion (CV^2)")
+# points(expr.cnt.mean[top.var.genes], 
+#        expr.cnt.sd[top.var.genes]^2 / expr.cnt.mean[top.var.genes]^2, 
+#        col = "blue")
+# 
+# source("//allen/programs/celltypes/workgroups/rnaseqanalysis/Script_Repository/Trygve/src/iterclust/fDeseqVarFast.R")
+# deseq.var.genes <- DeseqVarFast(refv=expr.cnt, sampv=expr.cnt, minBiolDisp=1, 
+#                           do.plot = TRUE, plot.fn = "deseq_vargenes.png")
+# top.var.genes <- deseq.var.genes[1:min(1000, length(deseq.var.genes))]
+# 
+# 
+
+
 
 ```
 
@@ -140,6 +176,7 @@ for (i in 1:10) {
   }
 }
 
+# sig.pcs <- 1:2  # Manually specify PCs
 plot(pca1, type = "l", main = "Explained variance of PCs")
 abline(v = max(sig.pcs), col = "blue")
 expr.pcs <- pca1$rotation[, sig.pcs]
@@ -157,38 +194,49 @@ for (i in 1:20) {
   within.ss[i] <- km1$tot.withinss
 }
 
+plot(1:20, within.ss, type="b",
+     xlab="Number of Clusters", ylab="Within groups sum of squares")
+
+# tSNE dimensionality reduction for cluster visualization
+tsne1 <- Rtsne(expr.pcs, perplexity = 30)$Y
+
+par(mfrow = c(3, 4), mar = c(1, 1, 4, 1))
+for (i in 2:13) {
+  cl.lab <- km.list[[i]]$cluster
+  plot(tsne1, col = cl.lab, main = paste(i, "clusters"))
+  # plot(expr.pcs[, 1:2], col = cl.lab, main = paste(i, "clusters"))
+}
+
 ```
 
-```{r find-clusters-graph, eval = FALSE}
-# Graph-based clustering (Jaccard Louvain)
-require(Rphenograph)
-
+```{r find-clusters-graph}
+# Graph-based clustering (Jaccard/Louvain)
 nn.num <- 15  # Number of nearest cells to compare in building graph
 rpheno <- Rphenograph(expr.pcs, k = nn.num)
+
+plot.lab <- paste(length(unique(membership(rpheno[[2]]))), "clusters; ",
+                  round(modularity(rpheno[[2]]), 2), "modularity")
+plot(rpheno[[1]], vertex.size = 10, vertex.label = NA, 
+     vertex.color = pal1[membership(rpheno[[2]])], main = plot.lab)
 
 ```
 
 
 ## Select cluster number
 ```{r select-clusters}
-plot(1:20, within.ss, type="b",
-     xlab="Number of Clusters", ylab="Within groups sum of squares")
+# Select kmeans clusters
+n.clus <- 11  # Number of clusters
+# cell.cl <- km.list[[n.clus]]$cluster
 
-tsne1 <- Rtsne(expr.pcs, perplexity = 30)$Y
+# Select graph-based clusters
+cell.cl <- membership(rpheno[[2]])
 
-par(mfrow = c(3, 4), mar = c(1, 2, 4, 2))
-for (i in 2:13) {
-  cl.lab <- km.list[[i]]$cluster
-  plot(tsne1, col = cl.lab, main = paste(i, "clusters"))
-  # PCA plots
-  # pcs.toplot <- 1:min(4, ncol(expr.pcs))
-  # pairs(expr.pcs[, pcs.toplot], col = cl.lab, main = paste(i, "clusters"))
-}
+# Select clusters identified based on whole data set (1772 cells)
+# cell.cl <- meta.subset$subclass
 
-n.clus <- 10
-# meta.subset$cluster <- km.list[[n.clus]]$cluster
-meta.subset$cluster <- membership(rpheno[[2]])
-meta.subset$cluster_curated <- meta.subset$cluster
+# Store cluster membership
+meta.subset$cluster <- as.character(cell.cl)
+meta.subset$cluster_curated <- as.character(cell.cl)
 
 ```
 
@@ -201,31 +249,39 @@ other.prop <- 0.1  # Marker gene: Max detection in other clusters
 min.markers <- 3  # Min number of marker genes
 min.cl.size <- 3  # Min number of cells
 
-cl.marker.cnt <- CountMarkerGenes(expr.subset, meta.subset$cluster_curated,
-                                  expr.thresh = p.expr.thresh,
-                                  cl1.prop = target.prop, cl2.prop = other.prop)
-print(head(cl.marker.cnt))
-
-# Merge similar clusters
-cl.tomerge <- which(cl.marker.cnt$min.size < min.cl.size |
-                      cl.marker.cnt$min.dex.cnt < min.markers)
-for (idx1 in cl.tomerge) {
-  cl.from <- cl.marker.cnt$cl2[idx1]
-  cl.to <- cl.marker.cnt$cl1[idx1]
-  meta.subset$cluster_curated[meta.subset$cluster_curated == cl.from] <- cl.to
+# Iteratively merge clusters based on above criteria
+merge.cl <- TRUE
+while (merge.cl) {
+  cl.marker.cnt <- CountMarkerGenes(expr.subset, meta.subset$cluster_curated,
+                                    expr.thresh = p.expr.thresh,
+                                    cl1.prop = target.prop, cl2.prop = other.prop)
+  
+  cl.tomerge <- which(cl.marker.cnt$min.size < min.cl.size |
+                        cl.marker.cnt$min.dex.cnt < min.markers)
+  
+  if (length(cl.tomerge) > 0) {
+    for (idx1 in cl.tomerge) {
+      cl.from <- cl.marker.cnt$cl2[idx1]
+      cl.to <- cl.marker.cnt$cl1[idx1]
+      meta.subset$cluster_curated[meta.subset$cluster_curated == cl.from] <- cl.to
+    }
+  } else {
+    merge.cl <- FALSE
+  }
 }
 
 ```
 
 
-## Visualize clusters
+## Visualize final clusters
 ```{r viz-clusters}
 par(mfrow = c(2, 3))
 
 for (clus1 in c("cluster", "cluster_curated")) {
-  plot(expr.pcs[, 1:2], col = meta.subset[, clus1],
+  plot.color <- pal1[as.factor(meta.subset[, clus1])]
+  plot(expr.pcs[, 1:2], col = plot.color,
       main = paste("PCA -", length(unique(meta.subset[, clus1])), clus1))
-  plot(tsne1, col = meta.subset[, clus1], 
+  plot(tsne1, col = plot.color, xlab = "tSNE1", ylab = "tSNE2", 
       main = paste("tSNE -", length(unique(meta.subset[, clus1])), clus1))
 
   cl.expr <- t(apply(expr.subset[top.var.genes, ], 1, 
@@ -236,23 +292,21 @@ for (clus1 in c("cluster", "cluster_curated")) {
   # Reorder dendrogram to match cluster position along first tSNE coordinate
   cl.coord <- tapply(tsne1[, 1], meta.subset[, clus1], mean)
   cl.dend <- reorder(cl.dend, cl.coord, agglo.FUN = "mean")
-  plot(cl.dend,
-             main = paste(length(unique(meta.subset[, clus1])), clus1))
+  plot(cl.dend, main = paste(length(unique(meta.subset[, clus1])), clus1))
 }
 
 ```
 
 
-
 ## Further analyses
-1. Try different clustering parameters
-    * Variable gene selection
-    * Number of principal components
-2. Split clusters further by clustering subsets of cells
-3. Plot expression of cluster markers
-4. Download and cluster complete mouse dorsal LGN data set (1,772 cells)
+1. Cluster with different parameters
+    * Adjust threshold for variable genes
+    * Select more/fewer principal components
+    * Change criteria for merging cell types
+2. Rerun clustering on cells in one cluster to try to further divide types
+3. Download and cluster complete mouse dorsal LGN data set (1,772 cells)
     * http://celltypes.brain-map.org/api/v2/well_known_file_download/502999251
-
+4. Identify and plot expression of cluster markers
 
 ## Resources
 1. RNA-seq data sets
