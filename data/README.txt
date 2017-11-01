@@ -1,4 +1,4 @@
-This data set is a subset of 300 cells from the data set described below. The data can be downloaded from Allen Institute Cell Types Database: http://celltypes.brain-map.org/download.
+This data set includes a subset of 300 cells from the data set described below. The data can be downloaded from the Allen Institute Cell Types Database: http://celltypes.brain-map.org/download.
 
 =================================
 Mouse dorsal LGN Cell Types study 
