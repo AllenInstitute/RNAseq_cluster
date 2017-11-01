@@ -5,6 +5,7 @@ output: html_notebook
 
 
 ```{r init-workspace, message=FALSE, warning=FALSE, include=FALSE}
+# Install required packages
 if (! require(Rtsne)) {
   install.packages("Rtsne")
   require(Rtsne)
@@ -68,11 +69,11 @@ CountMarkerGenes <- function(expr.dat, clusters,
 
 ## Load data
 300 cells from mouse dorsal lateral geniculate nucleus of the thalamus. 
-Data downloaded from the Allen Institute Cell Types Database 
-http://celltypes.brain-map.org/download.
+The full data set (1772 cells) is available for download from the 
+Allen Institute Cell Types Database: http://celltypes.brain-map.org/download.
 ```{r load-data, echo = FALSE}
 expr <- read.csv(file = "data/fpkm_table.csv", row.names = 1)
-genes <- read.csv(file = "data/rows-genes.csv", row.names = 1)
+genes <- read.csv(file = "data/rows-genes.csv")
 meta <- read.csv(file = "data/columns-cells.csv")
 
 ```
@@ -82,13 +83,6 @@ meta <- read.csv(file = "data/columns-cells.csv")
 # Keep cells with at least N genes detected
 min.genes <- 1000
 keep.cells <- which(apply(expr, 2, function(x) sum(x > 0)) > min.genes)
-
-keep.cells <- which(meta$broad_class %in% c("Gad2_Sepp1", "Gad2_Syt4", "Olig1") |
-                      meta$subclass %in% c("Slc17a6_Calb2"))
-
-# Select random subset of cells to speed computation
-set.seed(123)
-keep.cells <- sample(keep.cells, size = 300, replace = FALSE)
 
 # Keep annotated, variable genes
 var.genes <- apply(expr[, keep.cells], 1, sd) > 0
@@ -108,12 +102,18 @@ rownames(meta.subset) <- colnames(expr.subset)
 
 ## Select variable genes
 ```{r select-variable-genes}
+gene.mean <- apply(expr.subset, 1, mean)
 gene.sd <- apply(expr.subset, 1, sd)
-var.thresh <- quantile(gene.sd, 0.95)
-hist(gene.sd, breaks = 20, xlab = "Expression standard deviation", 
+sd.thresh <- quantile(gene.sd, 0.95)
+
+plot(gene.mean, gene.sd, cex = 0.5, 
+     xlab = "Average expression - log2(FPKM + 1)", 
+     ylab = "Expression variation (sd)", 
      main = "Variable genes")
-abline(v = var.thresh, col = "blue")
-top.var.genes <- which(gene.sd > var.thresh)
+abline(h = sd.thresh, col = "blue")
+top.var.genes <- which(gene.sd > sd.thresh)
+
+# plot(gene.mean^2, (gene.sd / gene.mean)^2, log = "xy")
 
 ```
 
@@ -126,6 +126,7 @@ pca1 <- prcomp(expr.scaled[top.var.genes, ])
 
 ## Select principal components
 ```{r select-pcs}
+# Find PCs with more variance explained than broken stick distribution
 brstick1 <- CalcBrokenStick(pca1$sdev^2)
 
 sig.pcs <- NULL
@@ -140,16 +141,17 @@ for (i in 1:10) {
 }
 
 plot(pca1, type = "l", main = "Explained variance of PCs")
-abline(v = max(sig.pcs))
+abline(v = max(sig.pcs), col = "blue")
 expr.pcs <- pca1$rotation[, sig.pcs]
 
 ```
 
 ## Cluster cells
-```{r find-clusters}
+```{r find-clusters-kmeans}
+# K-means clustering
 km.list <- list()
 within.ss <- NULL
-for (i in 1:10) {
+for (i in 1:20) {
   km1 <- kmeans(expr.pcs, centers = i, iter.max = 100, nstart = 100)
   km.list[[i]] <- km1
   within.ss[i] <- km1$tot.withinss
@@ -157,15 +159,25 @@ for (i in 1:10) {
 
 ```
 
+```{r find-clusters-graph, eval = FALSE}
+# Graph-based clustering (Jaccard Louvain)
+require(Rphenograph)
+
+nn.num <- 15  # Number of nearest cells to compare in building graph
+rpheno <- Rphenograph(expr.pcs, k = nn.num)
+
+```
+
+
 ## Select cluster number
 ```{r select-clusters}
-plot(1:10, within.ss, type="b",
+plot(1:20, within.ss, type="b",
      xlab="Number of Clusters", ylab="Within groups sum of squares")
 
 tsne1 <- Rtsne(expr.pcs, perplexity = 30)$Y
 
-par(mfrow = c(2, 4))
-for (i in 2:9) {
+par(mfrow = c(3, 4), mar = c(1, 2, 4, 2))
+for (i in 2:13) {
   cl.lab <- km.list[[i]]$cluster
   plot(tsne1, col = cl.lab, main = paste(i, "clusters"))
   # PCA plots
@@ -173,9 +185,9 @@ for (i in 2:9) {
   # pairs(expr.pcs[, pcs.toplot], col = cl.lab, main = paste(i, "clusters"))
 }
 
-n.clus <- 5
+n.clus <- 10
 # meta.subset$cluster <- km.list[[n.clus]]$cluster
-meta.subset$cluster <- meta.subset$subclass
+meta.subset$cluster <- membership(rpheno[[2]])
 meta.subset$cluster_curated <- meta.subset$cluster
 
 ```
@@ -235,14 +247,14 @@ for (clus1 in c("cluster", "cluster_curated")) {
 ## Further analyses
 1. Try different clustering parameters
     * Variable gene selection
-    * Number of principal components to include
+    * Number of principal components
 2. Split clusters further by clustering subsets of cells
 3. Plot expression of cluster markers
 4. Download and cluster complete mouse dorsal LGN data set (1,772 cells)
     * http://celltypes.brain-map.org/api/v2/well_known_file_download/502999251
 
 
-##Resources
+## Resources
 1. RNA-seq data sets
     * Allen Institute Cell Types Database http://celltypes.brain-map.org/download
     * Single Cell Portal (Broad Institute) https://portals.broadinstitute.org/single_cell
