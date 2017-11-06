@@ -1,86 +1,153 @@
-This data set includes a subset of 300 cells from the data set described below. The data can be downloaded from the Allen Institute Cell Types Database: http://celltypes.brain-map.org/download.
+This data set includes 300 nuclei from the data set described below. These nuclei include 250 NeuN+ (neuronal) and 50 NeuN- (non-neuronal) nuclei dissected from Layer 5 of human neocortex (middle temporal gyrus). The full data set can be downloaded from the Allen Institute Cell Types Database: http://celltypes.brain-map.org/download.
 
 =================================
-Mouse dorsal LGN Cell Types study 
+Human MTG
 =================================
 
-rnaseq_profile_id
+RNA sequencing data of single nuclei isolated from human middle temporal gyrus cortical area (MTG).
 
-RNA sequencing data of single cells isolated from mouse dorsal lateral geniculate nucleus (dLGN) of the thalamus.
+The data set includes 15928 single nuclei collected from six cortical layers of MTG.
 
-The data set includes 1772 single cells collected from dLGN in adult mouse and transcriptionally profiled with RNA sequencing. Additional donor meta-data and broad and subclass labels are available for each cell.
-
-The sequencing results were aligned and aggregated at the gene level using the RSEM algorithm, and FPKM values were calculated.
+The sequencing results were aligned and aggregated at the gene level using the RSEM (QC metrics only) and STAR algorithms, and counts were calculated.
 
 For more details, please see the Documentation tab in the Cell Types web application.
 
 
-fpkm_table.csv
-	Contains the (row, column) matrix of fpkm values obtained for each (gene, cell).
-	The first row contains the unique identifiers of the RNA-seq profiles of the cells (rnaseq_profile_id)
-	The first column contains the gene unique identifiers (gene_id)
+Gene expression data matrices
+	exons_table.csv
+		Contains the (row, column) matrix of read counts obtained for each (gene, nucleus) based on alignment to the transcriptome (GRCh38.p2).
+		The first row contains the unique identifiers of the RNA-seq profiles of the nuclei (exp_component_name)
+		The first column contains the gene unique identifiers (gene)
+	introns_table.csv
+		Contains the (row, column) matrix of read counts obtained for each (gene, nucleus) based on alignment to introns.
+		The first row contains the unique identifiers of the RNA-seq profiles of the nuclei (exp_component_name)
+		The first column contains the gene unique identifiers (gene)
 
-
-columns-cells.csv 
-	Contains information about the cells profiled with RNA sequencing
-	
-	rnaseq_profile_id
-		Expression profile obtained from aligning the RNA-Seq data to the GRCm38.p3 reference genome.
-	
+		
+		
+Sample information (columns-nuclei.csv)
+	exp_component_name
+		Unique sample identifier
+	alignment_id
+		LIMS alignment job
 	donor_id
-		Donor from which the cells were obtained.
-		
-	donor_age
-		Donor age.
-
-	genotype_driver
-		Transgenic mouse driver line.
-
-	genotype_reporter
-		Transgenic mouse reporter line.
-
-	cell_reporter
-		Detection status of reporter in cell.
-
+		Donor from which the nuclei were obtained
+	gender
+		Donor sex
+	organism
+		Donor species
 	sampling_region
-		Brain region targeted for cell sampling.
+		Brain region targeted for nucleus sampling
+	roi
+		Brain subregion targeted for nucleus sampling
+	facs_population_plan
+	sample_type
+		Sample type
+	facs_well
+		FACS well
+	facs_container
+		FACS container unique identifier
+	rna_amplification_set
+		Amplificaiton plate
+	rna_amplification
+		Amplificaiton well
+	percent_cdna_longer_than_400bp
+		Percentage of cDNA longer than 400 base pairs
+	amplified_quantity_ng
+		Amplificaiton cDNA yield in ng
+	library_prep_set
+		Library plate
+	library_prep
+		Library well
+	avg_size_bp
+		Average bp size of Library (Fragment Analyzer™ Automated CE)
+	quantification_fmol
+		Library yield in fmol
+	batch_sent_for_sequencing
+		Sequencing Batch
+	tube_sent_for_sequencing
+		Sequencing Lane
+	total_reads
+		Total number of sequencing reads
+	rsem_reads_aligned_mRNA_gDNA
+		Reads aligned to mRNA or to introns (RSEM)
+	rsem_percent_reads_aligned_to_mrna
+		% reads aligned to mRNA (RSEM)
+	rsem_percent_reads_aligned_to_genome_only
+		% reads aligned to introns (RSEM)
+	rsem_percent_reads_aligned_total
+		% reads aligned (RSEM)
+	percent_reads_aligned_to_exons
+		% reads aligned to mRNA (STAR)
+	percent_reads_aligned_to_rrna
+		% reads aligned to rRNA (STAR)
+	percent_reads_aligned_to_trna
+		% reads aligned to tRNA (STAR)
+	percent_reads_aligned_to_other_ncrna
+		% reads aligned to other non-coding RNA (STAR)
+	percent_reads_aligned_to_mt_exons
+		% reads aligned to mitochondrial RNA (STAR)
+	percent_reads_aligned_to_mt_rrna
+		% reads aligned to mitochondrial rRNA (STAR)
+	percent_reads_aligned_to_mt_trna
+		% reads aligned to mitochondrial tRNA (STAR)
+	percent_reads_aligned_to_mt_other_ncrna
+		% reads aligned to mitochondrial other non-coding RNA (STAR)
+	percent_reads_aligned_intron
+		% reads aligned to introns (STAR)
+	percent_reads_aligned_to_ecoli
+		% reads aligned to E. coli (STAR)
+	percent_reads_aligned_to_synthetic_constructs
+		% reads aligned to ERCC synthetic mRNA (STAR)
+	percent_reads_aligned_total
+		% reads aligned total (STAR)
+	percent_unique_reads
+		% unique reads (STAR)
+	complexity_aatt
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_acgt
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_agct
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_at
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_catg
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_ccgg
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_cg
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_gatc
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_gc
+		Dinucleotide odds ratio (PRINSEQ)
+	complexity_ta
+		Dinucleotide odds ratio (PRINSEQ)
+	cpm>0_gene_count
+		# of genes with CPM values greater than 0
+	cpm>1_gene_count
+		# of genes with CPM values greater than 1
+	cpm>4_gene_count
+		# of genes with CPM values greater than 4
+	cpm>8_gene_count
+		# of genes with CPM values greater than 8
+	cpm>16_gene_count
+		# of genes with CPM values greater than 16
+	cpm>32_gene_count
+		# of genes with CPM values greater than 32
+	cpm>64_gene_count
+		# of genes with CPM values greater than 64
+
+
 		
-	cell_prep_sample_id
-		Unique identifier of dissected brain sample.
-
-	slice_id and slice_name
-		Unique identifier and name of brain slice that was sampled.
-
-	slice_index
-		Brain slice number (from posterior to anterior) within each donor.
-
-	cell_id
-		Unique identifier of cell.
-		
-	rnaseq_profile_total_reads
-		Total number of reads from RNA-sequencing.
-		
-	rnaseq_profile_percent_reads_aligned_to_mrna and rnaseq_profile_percent_reads_aligned_to_ncrna
-		Percentage of total reads mapping to coding and non-coding RNA.
-
-	rnaseq_profile_percent_reads_aligned_to_genome_only
-		Percentage of total reads mapping to the genome but not transcriptome.
-		
-	subclass, subclass_order, and subclass_color
-		Label that groups cells by putative type. Names are composed of marker genes for each subclass.
-
-	broad_class, broad_class_order, broad_class_color
-		Label that groups subclasses into broader cell types. Names are composed of marker genes for each broad class.
-	
-	
-rows-genes.csv
-	Contains information about the genes for which fpkm values were calculated. 
-
-	gene_id
-		Unique identifier for the gene.
-
+Gene information (rows-genes.csv)
+	gene
+		Gene symbol
 	chromosome
-		Chromosome associated with the gene.
-
-	gene_entrez_id, gene_symbol, gene_name
-		NCBI Entrez ID, gene symbol, and gene name.
+		Chromosome location of gene
+	entrez_id
+		NCBI Entrez ID
+	gene_name
+		Gene name
+	mouse_homologenes
+		Mouse ortholog
