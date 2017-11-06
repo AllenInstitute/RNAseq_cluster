@@ -4,17 +4,13 @@ output: html_notebook
 ---
 
 
+## Initialize workspace
 Load required packages and functions.
 ```{r init-workspace, warning=FALSE}
 #### Install packages ####
 if (! require(Rtsne)) {
   install.packages("Rtsne")
   require(Rtsne)
-}
-
-if (! require(scde)) {
-  install.packages("scde")
-  require(scde)
 }
 
 if (! require(Rphenograph)) {
@@ -28,7 +24,6 @@ if (! require(Rphenograph)) {
 #### Load functions ####
 source(file = "fCalcBrokenStick.R")
 source(file = "fCountMarkerGenes.R")
-source(file = "fFitNoiseModels.R")
 
 
 #### Set color palette ####
@@ -37,6 +32,9 @@ pal1 <- c("#d77a7f", "#8eda48", "#7340cd", "#d6c847", "#ce4cc5", "#64db8e",
           "#6dc7b7", "#d23e70", "#c6d394", "#8d3870", "#827f38", "#cd90cb", 
           "#3a4e32", "#c9c5c6", "#3e263b", "#ae8875", "#556983", "#753627")
 palette(pal1)
+
+# Set random number seed
+set.seed(123)
 ```
 
 ## Load data
@@ -45,12 +43,15 @@ This data set includes 300 nuclei, 250 NeuN+ (neuronal) and 50 NeuN-
 The full data set (15,928 nuclei) can be downloaded from the Allen Institute 
 Cell Types Database: http://celltypes.brain-map.org/download.
 ```{r load-data, echo = FALSE}
-expr <- read.csv(file = "../data/counts_table.csv", row.names = 1)
+expr <- read.csv(file = "../data/counts-table.csv", row.names = 1)
 meta <- read.csv(file = "../data/columns-nuclei.csv")
+genes <- read.csv(file = "../data/rows-genes.csv")
 
 ```
 
 ## Subset data
+* Keep nuclei with sufficient gene expression
+* Normalize and log-transform expression data
 ```{r subset-data}
 # Keep cells with at least M genes detected
 min.genes <- 1000
@@ -61,66 +62,68 @@ keep.genes <- which(apply(expr[, keep.samp], 1, sd) > 0)
 
 # Subset and log-transform counts per million
 expr.cnt <- expr[keep.genes, keep.samp]
-expr.cpm <- round(sweep(expr.cnt, 2, colSums(expr.cnt), "/") * 1e6, 0)
-expr.cpm <- apply(expr.cpm, 2, function(x) { storage.mode(x) <- 'integer'; x })
+expr.cpm <- sweep(expr.cnt, 2, colSums(expr.cnt), "/") * 1e6
 expr.log <- log2(expr.cpm + 1)
 meta.subset <- droplevels(meta[keep.samp, ])
 rownames(meta.subset) <- colnames(expr.cnt)
+genes.subset <- droplevels(genes[keep.genes, ])
 
 ```
 
 ## Select variable genes
+Select significantly variable genes across nuclei based on expression dispersion.
 ```{r select-variable-genes, fig.height = 4, fig.width = 8}
 expr.mean <- apply(expr.cpm, 1, mean)
-expr.mean.bin <- cut(expr.mean, breaks = quantile(expr.mean, seq(0, 1, 1/20)),
-                     include.lowest = TRUE)
-expr.cv <- apply(expr.cpm, 1, function(x) sd(x) / mean(x))
+expr.mean.bin <- cut(expr.mean, breaks = 10^seq(-5, 5, 0.1), include.lowest = TRUE)
+expr.sd <- apply(expr.cpm, 1, sd)
+expr.cv <- expr.sd / expr.mean
 expr.cv.z.list <- tapply(expr.cv, expr.mean.bin, scale)
 expr.cv.z <- do.call("rbind", expr.cv.z.list)
 expr.cv.z <- expr.cv.z[match(names(expr.mean), rownames(expr.cv.z)), 1]
-expr.cv.z[expr.cv.z > 10] <- 10
+expr.cv.z[expr.cv.z > 8] <- 8
 
 # Select z-score threshold for variable genes
 z.thresh <- 2
-top.var.genes <- which(expr.cv.z > z.thresh)
+top.var.genes <- which(expr.cv.z > z.thresh & expr.mean > 0.1)
+
 
 par(mfrow = c(1, 2))
 plot(expr.mean, expr.cv, cex = 0.5, log = "xy", 
      xlab = "Average expression", 
      ylab = "Coefficient of variation (CV)", 
-     main = "Top variable genes")
-points(expr.mean[top.var.genes], expr.cv[top.var.genes], col = "blue")
+     main = paste(length(top.var.genes), "variable genes"))
+points(expr.mean[top.var.genes], expr.cv[top.var.genes], col = "orange", pch = 19)
 
 plot(expr.mean, expr.cv.z, cex = 0.5, log = "x", 
      xlab = "Average expression", 
      ylab = "CV (z-score)", 
-     main = "Top variable genes")
-points(expr.mean[top.var.genes], expr.cv.z[top.var.genes], col = "blue")
+     main = paste(length(top.var.genes), "variable genes"))
+points(expr.mean[top.var.genes], expr.cv.z[top.var.genes], col = "orange", pch = 19)
 
 ```
-
-## Fit noise models
-```{r fit-noise-models}
-noise.models <- FitNoiseModels(expr.cpm)
-
-
-```
-
 
 ## Reduce dimensionality
+Run principal components analysis (PCA) to find low-dimensional representation
+of expression patterns.
 ```{r reduce-dim}
+# Center and z-score genes across samples
 expr.scaled <- scale(expr.cpm)
+
+# Calculate PCA using variable genes
 pca1 <- prcomp(expr.scaled[top.var.genes, ])
 
 ```
 
 ## Select principal components
+Identify principal components that explain a significant proportion of 
+expression variance compared to chance. 
 ```{r select-pcs}
 # Find PCs with more variance explained than broken stick distribution
 brstick1 <- CalcBrokenStick(pca1$sdev^2)
 
+max.pcs <- 20
 sig.pcs <- NULL
-for (i in 1:10) {
+for (i in 1:max.pcs) {
   var.pct <- brstick1[i, "var_pct"]
   var.thresh <- brstick1[i, "bstick_thresh"]
   if (var.pct > var.thresh) {
@@ -130,15 +133,23 @@ for (i in 1:10) {
   }
 }
 
-# sig.pcs <- 1:2  # Manually specify PCs
-plot(pca1, type = "l", main = "Explained variance of PCs")
-abline(v = max(sig.pcs), col = "blue")
-expr.pcs <- pca1$rotation[, sig.pcs]
+# Select PCs to retain for further analysis
+keep.pcs <- sig.pcs
+
+pca.var <- summary(pca1)$importance[1, ]^2
+plot(pca.var[1:max.pcs], type = "b", xlab = "PC", ylab = "Explained variance")
+abline(v = max(sig.pcs), col = "light blue")
+text(x = max(sig.pcs), y = 0.9 * max(pca.var), labels = "# significant PCs", pos = 2)
+abline(v = max(keep.pcs), col = "blue")
+text(x = max(keep.pcs), y = 0.8 * max(pca.var), labels = "Keep PCs", pos = 2)
+expr.pcs <- pca1$rotation[, keep.pcs]
 
 ```
 
 ## Cluster cells
-```{r find-clusters-kmeans}
+### K-means 
+Try a range of cluster numbers.
+```{r find-clusters-kmeans, fig.width = 6, fig.height = 5}
 # K-means clustering
 km.list <- list()
 within.ss <- NULL
@@ -157,59 +168,68 @@ tsne1 <- Rtsne(expr.pcs, perplexity = 20)$Y
 par(mfrow = c(3, 4), mar = c(1, 1, 4, 1))
 for (i in 2:13) {
   cl.lab <- km.list[[i]]$cluster
-  plot(tsne1, col = cl.lab, main = paste(i, "clusters"))
+  plot(tsne1, col = cl.lab, xlab = "tSNE1", ylab = "tSNE2", main = paste(i, "clusters"))
   # plot(expr.pcs[, 1:2], col = cl.lab, main = paste(i, "clusters"))
 }
 
 ```
 
-```{r find-clusters-graph}
+### Graph based clustering
+* K nearest neighbors in PCA space
+* Jaccard similarity to better separate weakly joined clusters
+* Louvain community detection to identify clusters maximizing network modularity
+```{r find-clusters-graph, fig.width = 6, fig.height = 6}
 # Graph-based clustering (Jaccard/Louvain)
 nn.num <- 15  # Number of nearest cells to compare in building graph
-rpheno <- Rphenograph(expr.pcs, k = nn.num)
+graph.cl <- Rphenograph(expr.pcs, k = nn.num)
 
-plot.lab <- paste(length(unique(membership(rpheno[[2]]))), "clusters; ",
-                  round(modularity(rpheno[[2]]), 2), "modularity")
-plot(rpheno[[1]], vertex.size = 10, vertex.label = NA, 
-     vertex.color = pal1[membership(rpheno[[2]])], main = plot.lab)
+plot.lab <- paste(length(unique(membership(graph.cl[[2]]))), "clusters; ",
+                  round(modularity(graph.cl[[2]]), 2), "modularity")
+plot(graph.cl[[1]], vertex.size = 6, vertex.label = NA, edge.color = "grey80", 
+     vertex.color = pal1[membership(graph.cl[[2]])], main = plot.lab)
 
 ```
 
 
-## Select cluster number
+## Select clustering
+Select clusters for final curation and visualization.
 ```{r select-clusters}
-# Select kmeans clusters
-n.clus <- 11  # Number of clusters
-# cell.cl <- km.list[[n.clus]]$cluster
+# Store clustering results
+cell.cl <- list()
+n.clus <- 12  # Number of kmeans clusters
+cell.cl[["kmeans"]] <- km.list[[n.clus]]$cluster
+cell.cl[["graph"]] <- membership(graph.cl[[2]])
+cell.cl[["neun"]] <- meta.subset$facs_population_plan
 
-# Select graph-based clusters
-cell.cl <- membership(rpheno[[2]])
+# Select clusters
+select.cl <- "graph"
+meta.subset$cluster <- as.character(cell.cl[[select.cl]])
 
-# Select clusters identified based on whole data set (1772 cells)
-# cell.cl <- meta.subset$subclass
-
-# Store cluster membership
-meta.subset$cluster <- as.character(cell.cl)
-meta.subset$cluster_curated <- as.character(cell.cl)
+plot(tsne1, col = as.factor(meta.subset$cluster), xlab = "tSNE1", ylab = "tSNE2",
+      main = paste(length(unique(meta.subset$cluster)), select.cl, "clusters"))
+# pairs(expr.pcs[, 1:min(4, max(keep.pcs))], col = meta.subset$cluster, 
+#       main = paste(length(unique(meta.subset$cluster)), "clusters"))
 
 ```
 
 ## Curate clusters
+Merge clusters that are too small or lack gene markers.
 ```{r curate-clusters}
 # Cell type criteria
 p.expr.thresh <- 1  # Marker gene: Min expression for detection above noise
 target.prop <- 0.5  # Marker gene: Min detection (proportion of cells) in target cluster
 other.prop <- 0.1  # Marker gene: Max detection in other clusters
-min.markers <- 3  # Min number of marker genes
+min.markers <- 1  # Min number of marker genes
 min.cl.size <- 3  # Min number of cells
 
 # Iteratively merge clusters based on above criteria
+meta.subset$cluster_curated <- meta.subset$cluster
 merge.cl <- TRUE
 while (merge.cl) {
   cl.marker.cnt <- CountMarkerGenes(expr.cpm, meta.subset$cluster_curated,
                                     expr.thresh = p.expr.thresh,
                                     cl1.prop = target.prop, cl2.prop = other.prop)
-  
+  print(head(cl.marker.cnt, 3))
   cl.tomerge <- which(cl.marker.cnt$min.size < min.cl.size |
                         cl.marker.cnt$min.dex.cnt < min.markers)
   
@@ -227,7 +247,8 @@ while (merge.cl) {
 ```
 
 
-## Visualize final clusters
+## Visualize clusters
+Plot relationships between initial and curated clusters.
 ```{r viz-clusters}
 par(mfrow = c(2, 3))
 
@@ -256,11 +277,13 @@ for (clus1 in c("cluster", "cluster_curated")) {
 1. Cluster with different parameters
     * Adjust threshold for variable genes
     * Select more/fewer principal components
+    * Vary number of nearest neighbors for graph based clustering
     * Change criteria for merging cell types
-2. Rerun clustering on cells in one cluster to try to further divide types
-3. Download and cluster complete mouse dorsal LGN data set (1,772 cells)
-    * http://celltypes.brain-map.org/api/v2/well_known_file_download/502999251
+2. Compare membership of different clustering results
+3. Try splitting the largest cluster by rerunning clustering using only those nuclei
 4. Identify and plot expression of cluster markers
+5. Download and cluster other data sets
+
 
 ## Resources
 1. RNA-seq data sets
