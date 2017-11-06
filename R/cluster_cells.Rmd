@@ -40,93 +40,76 @@ palette(pal1)
 ```
 
 ## Load data
-300 cells from mouse dorsal lateral geniculate nucleus of the thalamus. 
-The full data set (1772 cells) is available for download from the 
-Allen Institute Cell Types Database: http://celltypes.brain-map.org/download.
+This data set includes 300 nuclei, 250 NeuN+ (neuronal) and 50 NeuN- 
+(non-neuronal), dissected from Layer 5 of human neocortex (middle temporal gyrus). 
+The full data set (15,928 nuclei) can be downloaded from the Allen Institute 
+Cell Types Database: http://celltypes.brain-map.org/download.
 ```{r load-data, echo = FALSE}
-expr <- read.csv(file = "../data/fpkm_table.csv", row.names = 1)
-genes <- read.csv(file = "../data/rows-genes.csv")
-meta <- read.csv(file = "../data/columns-cells.csv")
+expr <- read.csv(file = "../data/counts_table.csv", row.names = 1)
+meta <- read.csv(file = "../data/columns-nuclei.csv")
 
 ```
 
 ## Subset data
 ```{r subset-data}
-# Keep cells with at least N genes detected
+# Keep cells with at least M genes detected
 min.genes <- 1000
-keep.cells <- which(apply(expr, 2, function(x) sum(x > 0)) > min.genes)
+keep.samp <- which(apply(expr, 2, function(x) sum(x > 0)) > min.genes)
 
-# Keep annotated, variable genes
-var.genes <- apply(expr[, keep.cells], 1, sd) > 0
-keep.genes <- which(! duplicated(genes$gene_symbol) & 
-                      ! grepl("^Gm", genes$gene_symbol) &
-                      ! grepl("^LOC", genes$gene_symbol) &
-                      var.genes)
+# Keep genes with some variability
+keep.genes <- which(apply(expr[, keep.samp], 1, sd) > 0)
 
-# Subset and log-transform data
-genes.subset <- droplevels(genes[keep.genes, ])
-expr.subset <- log2(expr[keep.genes, keep.cells] + 1)
-meta.subset <- droplevels(meta[keep.cells, ])
-rownames(expr.subset) <- genes.subset$gene_symbol
-rownames(meta.subset) <- colnames(expr.subset)
+# Subset and log-transform counts per million
+expr.cnt <- expr[keep.genes, keep.samp]
+expr.cpm <- round(sweep(expr.cnt, 2, colSums(expr.cnt), "/") * 1e6, 0)
+expr.cpm <- apply(expr.cpm, 2, function(x) { storage.mode(x) <- 'integer'; x })
+expr.log <- log2(expr.cpm + 1)
+meta.subset <- droplevels(meta[keep.samp, ])
+rownames(meta.subset) <- colnames(expr.cnt)
 
 ```
-
-## Fit expression noise models
-Warning: this step is slow. Use pre-calculated values if available.
-```{r fit-noise-models}
-noise.models <- FitNoiseModels(expr.subset)
-
-```
-
 
 ## Select variable genes
-```{r select-variable-genes}
-expr.mean <- apply(expr.subset, 1, mean)
-expr.mean.bin <- cut(expr.mean, breaks = 0:15)
-expr.sd <- apply(expr.subset, 1, sd)
-sd.thresh <- quantile(expr.sd, 0.95)
+```{r select-variable-genes, fig.height = 4, fig.width = 8}
+expr.mean <- apply(expr.cpm, 1, mean)
+expr.mean.bin <- cut(expr.mean, breaks = quantile(expr.mean, seq(0, 1, 1/20)),
+                     include.lowest = TRUE)
+expr.cv <- apply(expr.cpm, 1, function(x) sd(x) / mean(x))
+expr.cv.z.list <- tapply(expr.cv, expr.mean.bin, scale)
+expr.cv.z <- do.call("rbind", expr.cv.z.list)
+expr.cv.z <- expr.cv.z[match(names(expr.mean), rownames(expr.cv.z)), 1]
+expr.cv.z[expr.cv.z > 10] <- 10
 
-plot(expr.mean, expr.sd, cex = 0.5, 
-     xlab = "Average expression - log2(FPKM + 1)", 
-     ylab = "Expression variation (sd)", 
-     main = "Variable genes")
-abline(h = sd.thresh, col = "blue")
-top.var.genes <- which(expr.sd > sd.thresh)
+# Select z-score threshold for variable genes
+z.thresh <- 2
+top.var.genes <- which(expr.cv.z > z.thresh)
 
+par(mfrow = c(1, 2))
+plot(expr.mean, expr.cv, cex = 0.5, log = "xy", 
+     xlab = "Average expression", 
+     ylab = "Coefficient of variation (CV)", 
+     main = "Top variable genes")
+points(expr.mean[top.var.genes], expr.cv[top.var.genes], col = "blue")
 
+plot(expr.mean, expr.cv.z, cex = 0.5, log = "x", 
+     xlab = "Average expression", 
+     ylab = "CV (z-score)", 
+     main = "Top variable genes")
+points(expr.mean[top.var.genes], expr.cv.z[top.var.genes], col = "blue")
 
+```
 
-# expr.sd.scaled <- unlist(tapply(expr.sd, expr.mean.bin, scale))
-# names(expr.sd.scaled) <- names(expr.mean)
-
-
-# expr.cnt <- 2^expr.subset - 1
-# expr.cnt.mean <- apply(expr.cnt, 1, mean)
-# expr.cnt.sd <- apply(expr.cnt, 1, sd)
-
-# par(mfrow = c(1, 2))
-# plot(expr.cnt.mean, expr.cnt.sd^2 / expr.cnt.mean^2, log = "xy",
-#      xlab = "Average expression - log2(FPKM + 1)", 
-#      ylab = "Expression disperion (CV^2)")
-# points(expr.cnt.mean[top.var.genes], 
-#        expr.cnt.sd[top.var.genes]^2 / expr.cnt.mean[top.var.genes]^2, 
-#        col = "blue")
-# 
-# source("//allen/programs/celltypes/workgroups/rnaseqanalysis/Script_Repository/Trygve/src/iterclust/fDeseqVarFast.R")
-# deseq.var.genes <- DeseqVarFast(refv=expr.cnt, sampv=expr.cnt, minBiolDisp=1, 
-#                           do.plot = TRUE, plot.fn = "deseq_vargenes.png")
-# top.var.genes <- deseq.var.genes[1:min(1000, length(deseq.var.genes))]
-# 
-# 
-
+## Fit noise models
+```{r fit-noise-models}
+noise.models <- FitNoiseModels(expr.cpm)
 
 
 ```
+
 
 ## Reduce dimensionality
 ```{r reduce-dim}
-expr.scaled <- scale(expr.subset)
+expr.scaled <- scale(expr.cpm)
 pca1 <- prcomp(expr.scaled[top.var.genes, ])
 
 ```
@@ -169,7 +152,7 @@ plot(1:20, within.ss, type="b",
      xlab="Number of Clusters", ylab="Within groups sum of squares")
 
 # tSNE dimensionality reduction for cluster visualization
-tsne1 <- Rtsne(expr.pcs, perplexity = 30)$Y
+tsne1 <- Rtsne(expr.pcs, perplexity = 20)$Y
 
 par(mfrow = c(3, 4), mar = c(1, 1, 4, 1))
 for (i in 2:13) {
@@ -223,7 +206,7 @@ min.cl.size <- 3  # Min number of cells
 # Iteratively merge clusters based on above criteria
 merge.cl <- TRUE
 while (merge.cl) {
-  cl.marker.cnt <- CountMarkerGenes(expr.subset, meta.subset$cluster_curated,
+  cl.marker.cnt <- CountMarkerGenes(expr.cpm, meta.subset$cluster_curated,
                                     expr.thresh = p.expr.thresh,
                                     cl1.prop = target.prop, cl2.prop = other.prop)
   
@@ -255,7 +238,7 @@ for (clus1 in c("cluster", "cluster_curated")) {
   plot(tsne1, col = plot.color, xlab = "tSNE1", ylab = "tSNE2", 
       main = paste("tSNE -", length(unique(meta.subset[, clus1])), clus1))
 
-  cl.expr <- t(apply(expr.subset[top.var.genes, ], 1, 
+  cl.expr <- t(apply(expr.cpm[top.var.genes, ], 1, 
                      function(x) tapply(x, meta.subset[, clus1], mean)))
   cl.dist <- as.dist((1 - cor(cl.expr)) / 2)
   cl.dend <- as.dendrogram(hclust(cl.dist))
