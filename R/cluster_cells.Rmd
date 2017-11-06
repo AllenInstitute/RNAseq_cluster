@@ -213,7 +213,7 @@ plot(tsne1, col = as.factor(meta.subset$cluster), xlab = "tSNE1", ylab = "tSNE2"
 ```
 
 ## Curate clusters
-Merge clusters that are too small or lack gene markers.
+Merge clusters that are too small or lack marker genes.
 ```{r curate-clusters}
 # Cell type criteria
 p.expr.thresh <- 1  # Marker gene: Min expression for detection above noise
