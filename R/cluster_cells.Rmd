@@ -18,6 +18,7 @@ if (! require(Rphenograph)) {
     install.packages("devtools")
   }
   devtools::install_github("JinmiaoChenLab/Rphenograph")
+  require(Rphenograph)
 }
 
 
