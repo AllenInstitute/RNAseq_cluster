@@ -26,5 +26,5 @@ Material for the SFN 2017 Neuroinformatics workshop.
 
 7. In the "Run Region" submenu of the "Code" menu, click "Run All".
 
-8. R code "chunks" are contained within "```" marks. If you make edits to a chunk, 
-click "Run Current Chunk" under the "Run Region submenu to view revised output.
+8. R code "chunks" are contained within "```" marks. If you edit a chunk, 
+click "Run Current Chunk" under the "Run Region" submenu to view revised output.
